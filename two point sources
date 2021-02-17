@@ -1,0 +1,102 @@
+#%%
+"""
+
+Two dipole model.
+Consider the two point sources are at (0, y, 0) and (0, -y, 0).
+Small distance comparing to target position (X_0, Y_0)
+
+"""
+
+#y = np.linspace(-5, 5, 50)
+#z = np.linspace(-0.1, 0.1, 4)
+t = np.linspace(0, 1e-8, 501)
+
+def V_y(omega, t):
+    return np.exp(1j*omega*t)
+
+"""
+Voltage field of the point source at Y = y. 
+Providing electric field E_y at the target (X_0, Y_0) or (R, Theta).
+Amplitude normalized.
+"""
+
+def V_ny(omega, t, y, theta, c):
+    return np.exp(1j*omega*(t + 2*y*np.cos(theta)/c))
+
+"""
+Voltage field of the point source at Y = -y. 
+Providing electric field E_ny at the target (X_0, Y_0).
+Amplitude normalized.
+"""
+
+plt.plot(t, V_y(2.4e9, t)) #V_y against t
+plt.plot(t, V_ny(2.4e9, t, 0.1, np.pi/4 , 3e8)) #V_ny against t
+
+
+plt.show()
+#%%
+
+"""
+Assume V_ny has a phase difference against V_y, which is 1j*omega*dt.
+dt = 5e-10
+Known that dt = 2*y*np.cos(theta)/c, we can rewrite np.cos(theta) = c*dt/(2*y)
+"""
+
+t = np.linspace(0, 1e-8, 501)
+
+def V_y(omega, t):
+    return np.exp(1j*omega*t)
+
+def V_ny(omega, t, dt):
+    return np.exp(1j*omega*(t + dt))
+
+plt.plot(t, V_y(2.4e9, t)) #V_y against t
+plt.plot(t, V_ny(2.4e9, t, 5e-10)) #V_ny against t
+
+
+#%%
+"""
+Then we look at the azimuzhal angle theta for a particular dt.
+"""
+
+def theta(c, dt, y):
+    return np.arccos(c*dt/(2*y))
+
+"""
+E field at the target due to the two sources. 
+Amplitude normalized.
+"""
+
+def E(omega, t, dt, y, c):
+    return np.exp(1j*omega*t) + np.exp(1j*omega*(t + dt - 2*y*np.cos(theta(3e8, 5e-10, 0.1))/c))
+
+plt.plot(t, E(2.4e9, t, 5e-10, 0.1, 3e8))
+#%%
+"""
+We can clearly see that the E fields from the two sources at the target are identical due to the initial phase difference dt 
+and the path difference 2ycos(theta).
+We then look at the intensity.
+"""
+
+def I(t):
+    return E(2.4e9, t, 5e-10, 0.1, 3e8)*np.conj(E(2.4e9, t, 5e-10, 0.1, 3e8))
+
+plt.plot(t, I(t))
+
+"""
+Which is a constant.
+"""
+#%%
+"""
+If the angle theta is not fixed.
+"""
+
+Theta = np.linspace(-np.pi, np.pi, 501)
+
+def E(omega, t, dt, y, c, Theta):
+    return np.exp(1j*omega*t) + np.exp(1j*omega*(t + dt - 2*y*np.cos(Theta)/c))
+
+def I(t, Theta):
+    return E(2.4e9, t, 5e-10, 0.1, 3e8, Theta)*np.conj(E(2.4e9, t, 5e-10, 0.1, 3e8, Theta))
+
+plt.plot(Theta, I(t, Theta))
