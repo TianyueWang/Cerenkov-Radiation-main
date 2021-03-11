@@ -1,0 +1,194 @@
+import numpy as np
+from scipy import integrate
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+from scipy.fft import fft
+#%%
+
+"""
+The antenna extends from (0, y_0, 0) to (0, -y_0, 0) with x-width -0.1 to 0.1 and z-width 0 to 0.2.
+Target at (X_0, -Y_0, 0), X_0 =1, Y_0=1, 
+or R = sqrt(2), theta = pi/4 in cylindrical polar coordinates.
+"""
+
+c = 3e8 #Speed of light. m/s
+X_0 = 1 #Target x position. m
+Y_0 = 1 #Target y position. m
+omega = 2.4e9 #Angular frequency. rad/s
+epsilon0 = 8.85e-12 #Vacuum permittivity. F/m
+epsilonr = 10 # Relative permittivity. For Alumina.
+V_0 = 1 #Voltage difference across each element of the antenna in z direction. V
+x_0 = 0.1 #Half x width of the antenna. m
+y_0 = 1 #Half y length of the antenna. m
+z_0 = 0.1 #Half z width of the antenna. m
+R = np.sqrt(2) # m
+theta = np.pi/4 # grad Random point at (R, theta, 0).
+
+tp = np.linspace(R/c, 2e-7, 501) #Time for the signal to receive the target.
+
+def p_y(y):
+    """
+    Parameters
+    ----------
+    y : array
+        Polarization current y position.
+
+    Returns
+    -------
+    array
+        Time for the polarization current to move to y.
+    """
+    return -np.sqrt(X_0**2 + (Y_0 + y)**2)/c
+
+A_list = [] #Magnetic vector potential.
+
+for i in range(len(tp)):
+    def d(y):
+        """
+        Parameters
+        ----------
+        y: float
+            y direction in the antenna.
+
+        Returns
+        -------
+        float
+            Distance between a polarization current point in the antenna to the target.
+        """
+        return np.sqrt((R*np.sin(theta))**2 + (R*np.cos(theta) + y)**2)
+    
+    def V(z, y):
+        """
+        Parameters
+        ----------
+        z: float
+            z direction in the antenna.
+        y: float
+            y direction in the antenna.
+
+        Returns
+        -------
+        array
+            Voltage field exerted across every element of the antenna in the z direction.
+        """
+        return V_0*z/(2*z_0)*np.exp(1j*omega*(tp[i] - d(y)/c - p_y(y)))
+    
+    def delV(z, y):
+        """
+        Parameters
+        ----------
+        z: float
+            z direction in the antenna.
+        y: float
+            y direction in the antenna.
+
+        Returns
+        -------
+        float
+            Divergence of V(y, z).
+        """
+        return (Y_0 + y)/(c*np.sqrt(X_0**2 + (Y_0 + y)**2))*1j*omega*V(z, y) + V(z, y)/z
+    
+    def P(z, y):
+        """
+        Parameters
+        ----------
+        z: float
+            z direction in the antenna.
+        y: float
+            y direction in the antenna.
+
+        Returns
+        -------
+        float
+            Polarization inside the antenna.
+        """
+        return epsilon0*(1 - epsilonr)*delV(z, y)
+    
+    def J(z, y):
+        """
+        Parameters
+        ----------
+        z: float
+            z direction in the antenna.
+        y: float
+            y direction in the antenna.
+
+        Returns
+        -------
+        float
+            Polarization current inside the antenna.
+        """
+        return 1j*omega*P(z, y)
+   
+    def f(z, y):
+        """
+        Parameters
+        ----------
+        z: float
+            z direction in the antenna.
+        y: float
+            y direction in the antenna.
+
+        Returns
+        -------
+        float
+            Integrand of the integration of A.
+        """
+        return 1j * J(z,y)/np.sqrt((R*np.sin(theta))**2 + (R*np.cos(theta) + y)**2)
+   
+    Ai = epsilon0*2*x_0/(4*np.pi)*integrate.dblquad(f, -y_0, y_0, 0, 2*z_0)[0] #The A field at (R, theta, 0) at time tp[i].
+    A_list.append(Ai)
+    
+A = np.array(A_list)
+
+E = omega * A #Electric field at (R, theta, 0)
+#The double integral eliminates the imaginary part of A, so we need to discard the j to assure a real E.
+
+def E_fit(tp, Amp, phi):
+        """
+        Parameters
+        ----------
+        tp: array
+            Time for the signal to receive the detector.
+        Amp: float
+            Amplitude of the fit function. Electric field strength.
+        phi: float
+            Phase of the fit function.
+        Returns
+        -------
+        array
+            Fit E by a cosine curve with estimated parameters.
+        """
+        return Amp * np.cos(omega * tp + phi)
+
+params, _ = curve_fit(E_fit, tp, E)
+
+Amp, phi = params
+print(params[0])
+
+I = Amp**2 #Intensity at point (R, theta, 0).
+print(I)
+
+plt.plot(tp, E)
+#plt.legend()
+plt.title('Electric field verses time plot at the target for a sinusoidal signal.')
+plt.xlabel('tp/s')
+plt.ylabel('E/m⋅kg⋅s−3⋅A−1')
+#plt.plot(tp, I)
+#%%
+Iarray = np.linspace(I, I, 501)
+plt.plot(tp, Iarray)
+plt.title('Intensity verses time plot at the target for a sinusoidal signal.')
+plt.xlabel('tp/s')
+plt.ylabel('I/(m⋅kg⋅s−3⋅A−1)^2')
+#%%
+"""
+Fourier transform of the electric field at the target.
+The single peak is about 3.8e8 Hz, which differs a factor of 2pi to the initial angular ferquency.
+"""
+E_f = fft(E)
+freq = np.linspace(0, 1/((2e-7 - R/c)/501), 501)
+plt.plot(freq, np.abs(E_f))
+plt.xlim(0, 1e9)
+#%%
