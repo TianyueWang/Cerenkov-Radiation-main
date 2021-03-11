@@ -1,53 +1,51 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
 #%%
 """
-
 Two dipole model.
 Consider the two point sources are at (0, y, 0) and (0, -y, 0).
 Small distance comparing to target position (X_0, Y_0)
-
-"""
-
-#y = np.linspace(-5, 5, 50)
-#z = np.linspace(-0.1, 0.1, 4)
-t = np.linspace(0, 1e-8, 501)
-
-def V_y(omega, t):
-    return np.exp(1j*omega*t)
-
-"""
-Voltage field of the point source at Y = y. 
-Providing electric field E_y at the target (X_0, Y_0) or (R, Theta).
-Amplitude normalized.
-"""
-
-def V_ny(omega, t, y, theta, c):
-    return np.exp(1j*omega*(t + 2*y*np.cos(theta)/c))
-
-"""
-Voltage field of the point source at Y = -y. 
-Providing electric field E_ny at the target (X_0, Y_0).
-Amplitude normalized.
-"""
-
-plt.plot(t, V_y(2.4e9, t)) #V_y against t
-plt.plot(t, V_ny(2.4e9, t, 0.1, np.pi/4 , 3e8)) #V_ny against t
-
-
-plt.show()
-#%%
-
-"""
-Assume V_ny has a phase difference against V_y, which is 1j*omega*dt.
-dt = 5e-10
-Known that dt = 2*y*np.cos(theta)/c, we can rewrite np.cos(theta) = c*dt/(2*y)
 """
 
 t = np.linspace(0, 1e-8, 501)
 
 def V_y(omega, t):
+    """
+    Parameters
+    ----------
+    omega : float
+        Angular frequency.
+    t :array
+        Time passes.
+
+    Returns
+    -------
+    array
+        Voltage field of the point source at Y = y. 
+        Providing electric field E_y at the target (X_0, Y_0) or (R, Theta).
+        Amplitude normalized.
+    """
     return np.exp(1j*omega*t)
 
 def V_ny(omega, t, dt):
+    """
+   Parameters
+    ----------
+    omega : float
+        Angular frequency.
+    t :array
+        Time passed.
+    dt : float
+        Initial phase difference of the two voltages.
+        
+    Returns
+    -------
+    array
+        Voltage field of the point source at Y = -y. 
+        Assume V_ny has a phase difference to V_y, which is 1j*omega*dt.
+        dt = 5e-10
+    """
     return np.exp(1j*omega*(t + dt))
 
 plt.plot(t, V_y(2.4e9, t)) #V_y against t
@@ -56,29 +54,114 @@ plt.plot(t, V_ny(2.4e9, t, 5e-10)) #V_ny against t
 
 #%%
 """
-Then we look at the azimuzhal angle theta for a particular dt.
+Known that dt = 2ycos(theta)/c, due to far field approximation.
+We can rewrite cos(theta) = cdt/(2y).
+Where theta is the Azimuzhal angle.
 """
 
 def theta(c, dt, y):
-    return np.arccos(c*dt/(2*y))
+    """
+    Parameters
+    ----------
+    c : float
+        Speed of light.
+    dt : float
+        Initial phase difference of the two voltages.
+    y : float
+        Distance from the two dipoles to the origin.
 
+    Returns
+    -------
+    float
+        Azimuthal angle.
+    """
+    return np.arcsin(c*dt/(2*y))
+
+def E_y(omega, t):
+    """
+    Parameters
+    ----------
+    omega : float
+        Angular frequency.
+    t :array
+        Time passed.
+
+    Returns
+    -------
+    array
+        E field at the target due to the dipole at (0, y, 0). 
+        Amplitude normalized.
+    """
+    return np.exp(1j*omega*t) / np.cos(theta(3e8, 5e-10, 0.1 ))
 """
-E field at the target due to the two sources. 
-Amplitude normalized.
+The Amplitude of the electric field is reduced by 1/cos(theta).
 """
+
+def E_ny(omega, t, dt, y, c):
+    """
+    Parameters
+    ----------
+    omega : float
+        Angular frequency.
+    t :array
+        Time passed.
+    dt : float
+        Initial phase difference of the two voltages.
+    y : float
+        Distance from the two dipoles to the origin.
+    c : float
+        Speed of light.
+
+    Returns
+    -------
+    array
+        E field at the target due to the dipole at (0, -y, 0). 
+        Amplitude normalized.
+    """
+    return np.exp(1j*omega*(t + dt - 2*y*np.sin(theta(3e8, 5e-10, 0.1))/c)) / np.cos(theta(3e8, 5e-10, 0.1 ))
 
 def E(omega, t, dt, y, c):
-    return np.exp(1j*omega*t) + np.exp(1j*omega*(t + dt - 2*y*np.cos(theta(3e8, 5e-10, 0.1))/c))
+    """
+    omega : float
+        Angular frequency.
+    t :array
+        Time passed.
+    dt : float
+        Initial phase difference of the two voltages.
+    y : float
+        Distance from the two dipoles to the origin.
+    c : float
+        Speed of light.
 
+    Returns
+    -------
+    array
+        Total E field at the target.
+    """
+    return E_y(omega, t) + E_ny(omega, t, dt, y, c)
+
+plt.plot(t, E_y(2.4e9, t))
+plt.plot(t, E_ny(2.4e9, t, 5e-10, 0.1, 3e8))
 plt.plot(t, E(2.4e9, t, 5e-10, 0.1, 3e8))
 #%%
 """
 We can clearly see that the E fields from the two sources at the target are identical due to the initial phase difference dt 
 and the path difference 2ycos(theta).
-We then look at the intensity.
+We then look at the intensity of this E field.
 """
 
 def I(t):
+    """
+    Parameters
+    ----------
+    t: array
+        Time passed.
+
+    Returns
+    -------
+    array
+        Intensity at the target.
+    """
     return E(2.4e9, t, 5e-10, 0.1, 3e8)*np.conj(E(2.4e9, t, 5e-10, 0.1, 3e8))
 
 plt.plot(t, I(t))
@@ -88,15 +171,52 @@ Which is a constant.
 """
 #%%
 """
-If the angle theta is not fixed.
+If the target (the Azimuzal Angle) is not fixed, and the initial phase difference dt = 0,
+we can find intensity varies as a sinc function wrt Theta.
+This part is just for testing.
 """
+Theta = np.linspace(-np.pi/2, np.pi/2, 501)
 
-Theta = np.linspace(-np.pi, np.pi, 501)
+def Ep(omega, t, y, c, Theta):
+    """
+    Parameters
+    ----------
+    omega: float
+        Angular frequency
+    t: array
+        Time passed.
+    dt: float
+        Time passed.
+    y: float
+        Distance from each source to the origin.
+    Theta :array
+        Azimuzal angle.
+        
+    Returns
+    -------
+    array
+        Intensity at the target.
+    """
+    return (np.exp(1j*omega*(t + y*np.sin(Theta)/c)) + np.exp(1j*omega*(t - y*np.sin(Theta)/c))) #/ np.cos(Theta)
 
-def E(omega, t, dt, y, c, Theta):
-    return np.exp(1j*omega*t) + np.exp(1j*omega*(t + dt - 2*y*np.cos(Theta)/c))
+def Ip(t, Theta):
+    """
+    Parameters
+    ----------
+    t: array
+        Time passed.
+    Theta: array
+        Azimuzal angle.
+    Returns
+    -------
+    array
+        Intensity at the target.
+    """
+    return Ep(2.4e9, t, 0.1, 3e8, Theta)*np.conj(Ep(2.4e9, t, 0.1, 3e8, Theta))
 
-def I(t, Theta):
-    return E(2.4e9, t, 5e-10, 0.1, 3e8, Theta)*np.conj(E(2.4e9, t, 5e-10, 0.1, 3e8, Theta))
-
-plt.plot(Theta, I(t, Theta))
+plt.plot(Theta, Ip(t, Theta))
+"""
+The whole idea was built on the far field approximation.
+"""
+#plt.plot(t, Ep(2.4e9, t, 0, 0.1, 3e8, Theta))
+#%%
