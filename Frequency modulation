@@ -3,9 +3,9 @@ from scipy import integrate
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.fft import fft
-#%%
+
 """
-The antenna extends from (0, y_0, 0) to (0, -y_0, 0) with x-width -0.1 to 0.1 and z-width 0 to 0.2.
+The 2m antenna extends from (0, y_0, 0) to (0, -y_0, 0) with x-width -0.1 to 0.1 and z-width 0 to 0.2.
 Target at (X_0, -Y_0, 0), X_0 =1, Y_0=1, 
 or R = sqrt(2), theta = pi/4 in cylindrical polar coordinates.
 """
@@ -20,131 +20,242 @@ V_0 = 1 #Voltage difference across each element of the antenna in z direction. V
 x_0 = 0.1 #Half x width of the antenna. m
 y_0 = 1 #Half y length of the antenna. m
 z_0 = 0.1 #Half z width of the antenna. m
-R = np.sqrt(2) # m
-theta = np.pi/4 # grad Random point at (R, theta, 0).
+y_a = np.linspace(-1, 1, 500) #y positions on the antenna.
+#R = np.sqrt(2) # m
+#theta = np.pi/4 # grad Random point at (R, theta, 0).
+#T = 2e-7 #End of tp.
+#tp = np.linspace(R/c, T, 500) #Time for the signal to receive the target.
 
-tp = np.linspace(R/c, 2e-7, 500) #Time for the signal to receive the target.
 
-def p_y(y):
-    """
-    Parameters
-    ----------
-    y : array
-        Polarization current y position.
-
-    Returns
-    -------
-    array
-        Time for the polarization current to move to y.
-    """
-    return -np.sqrt(X_0**2 + (Y_0 + y)**2)/c
-
-A_list = [] #Magnetic vector potential.
-
-for i in range(len(tp)):
-    F = 2j*np.sin(0.2*omega * tp[i]) #Signal wave for frequency modulation.
-    def d(y):
-        """
-        Parameters
-        ----------
-        y: float
-            y direction in the antenna.
-
-        Returns
-        -------
-        float
-            Distance between a polarization current point in the antenna to the target.
-        """
-        return np.sqrt((R*np.sin(theta))**2 + (R*np.cos(theta) + y)**2)
+class Fields: #Create a class for the E field at the target  & V field in the antenna.
+    def __init__(self, R, theta, T, tp):
+        self.distance = R #Location of the detector to the origin. m
+        self.angle = theta #Azimuzai angle of the detector. rad
+        self.time_limit = T #Maximum time for the detector to receive the signal. s
+        self.tp = np.linspace(R/c, T, 500) #Time range for the detector to receive the signal. s
+      
+    def A_list(self): #Create a  list for the Magnetic vector potential at tp at the detector.
+        self.A_list = [] #Empty list of the magnetic vector potential.
+        for i in range(len(self.tp)):
+            F = 2j*np.sin(0.2*omega * self.tp[i]) #Signal wave for frequency modulation.
+            
+            def p_y(y):
+                """
+                Parameters
+                ----------
+                y : array
+                    Polarization current y position.
+            
+                Returns
+                -------
+                array
+                    Time for the polarization current to move to y.
+                """
+                return -np.sqrt(X_0**2 + (Y_0 + y)**2)/c
+            
+            def d(y):
+                """
+                Parameters
+                ----------
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                float
+                    Distance between a polarization current point in the antenna to the target.
+                """
+                return np.sqrt((self.distance*np.sin(self.angle))**2 + (self.distance*np.cos(self.angle) + y)**2)
+            
+            def V(z, y):
+                """
+                Parameters
+                ----------
+                z: float
+                    z direction in the antenna.
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                array
+                    Voltage field exerted across every element of the antenna in the z direction.
+                """
+                return V_0*z/(2*z_0)*np.exp(1j*omega*(self.tp[i] - np.sqrt(X_0 + (Y_0+y)**2)/c - p_y(y)) + F)
+            
+            def delV(z, y):
+                """
+                Parameters
+                ----------
+                z: float
+                    z direction in the antenna.
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                float
+                    Divergence of V(y, z).
+                """
+                return (Y_0 + y)/(c*np.sqrt(X_0**2 + (Y_0 + y)**2))*1j*omega*V(z, y) + V(z, y)/z
+            
+            def P(z, y):
+                """
+                Parameters
+                ----------
+                z: float
+                    z direction in the antenna.
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                float
+                    Polarization inside the antenna.
+                """
+                return epsilon0*(1 - epsilonr)*delV(z, y)
+            
+            def J(z, y):
+                """
+                Parameters
+                ----------
+                z: float
+                    z direction in the antenna.
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                float
+                    Polarization current inside the antenna.
+                """
+                return 1j*omega*P(z, y)
+           
+            def f(z, y):
+                """
+                Parameters
+                ----------
+                z: float
+                    z direction in the antenna.
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                float
+                    Integrand of the integration of A.
+                """
+                return 1j * J(z,y)/d(y)
+            
+            Ai = epsilon0*2*x_0/(4*np.pi)*integrate.dblquad(f, -y_0, y_0, 0, 2*z_0)[0]
+            #The A field at (R, theta, 0) at time tp[i].
+            self.A_list.append(Ai)
+        return self.A_list
+            
+    def V_list(self): #Create a  list for the Voltage field in the antenna.
+        self.V_list = [] #Voltage across every element of the antenna.
+        for i in range(len(self.tp)):
+            F = 2j*np.sin(0.2*omega * self.tp[i]) #Signal wave for frequency modulation.
+            def p_y(y):
+                """
+                Parameters
+                ----------
+                y : array
+                    Polarization current y position.
+            
+                Returns
+                -------
+                array
+                    Time for the polarization current to move to y.
+                """
+                return -np.sqrt(X_0**2 + (Y_0 + y)**2)/c
+            
+            def V(z, y):
+                """
+                Parameters
+                ----------
+                z: float
+                    z direction in the antenna.
+                y: float
+                    y direction in the antenna.
+        
+                Returns
+                -------
+                array
+                    Voltage field exerted across every element of the antenna in the z direction.
+                """
+                return V_0*z/(2*z_0)*np.exp(1j*omega*(self.tp[i] - np.sqrt(X_0 + (Y_0+y)**2)/c - p_y(y)) + F)
+            
+            self.Vi = V(0.1, 1)
+            self.V_list.append(self.Vi)
+        return self.V_list
     
-    def V(z, y):
-        """
-        Parameters
-        ----------
-        z: float
-            z direction in the antenna.
-        y: float
-            y direction in the antenna.
-
-        Returns
-        -------
-        array
-            Voltage field exerted across every element of the antenna in the z direction.
-        """
-        return V_0*z/(2*z_0)*np.exp(1j*omega*(tp[i] - d(y)/c - p_y(y)) + F)
+    def V(self): #Convert sequence to list object for the V field.
+        return np.array(self.V_list())
     
-    def delV(z, y):
-        """
-        Parameters
-        ----------
-        z: float
-            z direction in the antenna.
-        y: float
-            y direction in the antenna.
+    def E(self): #Convert sequence to list object for the E field.
+        return omega * np.array(self.A_list()) #Electric field at (R, theta, 0)
+        #The double integral eliminates the imaginary part of A, so we need to discard the j to assure a real E.
+        
+    def copy(self): #Copy the Fields class to get multiple initial values.
+        return Fields(self.distance, self.angle, self.time_limit, self.tp)
 
-        Returns
-        -------
-        float
-            Divergence of V(y, z).
-        """
-        return (Y_0 + y)/(c*np.sqrt(X_0**2 + (Y_0 + y)**2))*1j*omega*V(z, y) + V(z, y)/z
-    
-    def P(z, y):
-        """
-        Parameters
-        ----------
-        z: float
-            z direction in the antenna.
-        y: float
-            y direction in the antenna.
+S1 = Fields(np.sqrt(2), np.pi/4, 2e-7, np.linspace(np.sqrt(2)/c, 2e-7, 500))
 
-        Returns
-        -------
-        float
-            Polarization inside the antenna.
-        """
-        return epsilon0*(1 - epsilonr)*delV(z, y)
-    
-    def J(z, y):
-        """
-        Parameters
-        ----------
-        z: float
-            z direction in the antenna.
-        y: float
-            y direction in the antenna.
+"""
+One thing to notice when using the code.
+Clear all the variables every time after plotting a graph with a  function in class Fields before plotting another graph.
+If not, the console will return: "'list' object is not callable"
+This is because a 'list' object can only be called once outside the class.
+"""
+#%%
+"""
+E field at the detector verses tp plot.
+"""
+plt.plot(S1.tp, S1.E())
+plt.title('Electric field verses time plot at the target for a frequency modulated signal.')
+plt.xlabel('tp/s')
+plt.ylabel('E/m⋅kg⋅s−3⋅A−1')
 
-        Returns
-        -------
-        float
-            Polarization current inside the antenna.
-        """
-        return 1j*omega*P(z, y)
-   
-    def f(z, y):
-        """
-        Parameters
-        ----------
-        z: float
-            z direction in the antenna.
-        y: float
-            y direction in the antenna.
-
-        Returns
-        -------
-        float
-            Integrand of the integration of A.
-        """
-        return 1j * J(z,y)/np.sqrt((R*np.sin(theta))**2 + (R*np.cos(theta) + y)**2)
-   
-    Ai = epsilon0*2*x_0/(4*np.pi)*integrate.dblquad(f, -y_0, y_0, 0, 2*z_0)[0] #The A field at (R, theta, 0) at time tp[i].
-    A_list.append(Ai)
-    
-A = np.array(A_list)
-
-E = omega * A #Electric field at (R, theta, 0)
-#The double integral eliminates the imaginary part of A, so we need to discard the j to assure a real E.
-
+#%%
+"""
+Fourier transform of the electric field at the detctor.
+"""
+E_f = fft(S1.E())
+freqE = np.linspace(0, 1/((S1.time_limit - S1.distance/c)/500), 500)
+plt.plot(freqE, np.abs(E_f))
+plt.xlim(0, 1e9)
+plt.title('Fourier transform of the frequency modulated E field.')
+plt.xlabel('Frequency/Hz')
+plt.ylabel('Amplitude')
+#%%
+"""
+E field at the another detector position verses tp.
+"""
+S2 = S1.copy()
+S2.distance = np.sqrt(2) + 0.1
+plt.plot(S2.tp, S2.E())
+plt.title('Electric field difference at random points to the target verses time plot.')
+plt.xlabel('tp/s')
+plt.ylabel('E/m⋅kg⋅s−3⋅A−1')
+#%%
+"""
+Difference in the fourier transform of the electric field at the target and another detector.
+"""
+S2 = S1.copy()
+S2.distance = np.sqrt(2) + 0.1
+E_f1 = fft(S1.E())
+E_f2 = fft(S2.E())
+freqE = np.linspace(0, 1/((S1.time_limit - S1.distance/c)/500), 500)
+plt.plot(freqE, np.abs(E_f2 - E_f1))
+plt.xlim(0, 1e9)
+plt.title('Fourier transform of the electric field difference squared at the target.')
+plt.xlabel('Frequency/Hz')
+plt.ylabel('Amplitude')
+#%%
+"""
+Intenity of the E field at the detector.
+"""
 def E_fit(tp, Amp, phi):
         """
         Parameters
@@ -162,32 +273,65 @@ def E_fit(tp, Amp, phi):
         """
         return Amp * np.cos(omega * tp + phi + 2*np.sin(0.2*omega * tp))
 
-params, _ = curve_fit(E_fit, tp, E)
+params, _ = curve_fit(E_fit, S1.tp, S1.E())
 
 Amp, phi = params
 print(params[0])
 
 I = Amp**2 #Intensity at point (R, theta, 0).
-
-plt.plot(tp, E)
-plt.title('Electric field verses time plot at the target for a frequency modulated signal.')
-plt.xlabel('tp/s')
-plt.ylabel('E/m⋅kg⋅s−3⋅A−1')
-
 print(I)
 #%%
+"""
+Intenity of the E field at the detector plot.
+"""
 Iarray = np.linspace(I, I, 500)
-plt.plot(tp, Iarray)
+plt.plot(S1.tp, Iarray)
 plt.title('Intensity verses time plot at the target for a frequency modulated signal.')
 plt.xlabel('tp/s')
 plt.ylabel('I/(m⋅kg⋅s−3⋅A−1)^2')
+
 #%%
 """
-Fourier transform of the electric field at the target.
-The single peak is about 3.8e8 Hz, which differs a factor of 2pi to the initial angular ferquency.
+Voltage field across the antenna verses the t = tp - R/c
 """
-E_f = fft(E)
-freq = np.linspace(0, 1/((2e-7 - R/c)/500), 500)
-plt.plot(freq, np.abs(E_f))
+plt.plot(S1.tp - S1.distance/c, S1.V())
+plt.title('Voltage verses time plot at the antenna for a frequency modulated signal.')
+plt.xlabel('t/s')
+plt.ylabel('V/(m2⋅kg⋅s−3⋅A−1)')
+#%%
+"""
+Fourier transform of the volatge field at the antenna, 
+which is in the same form as the electric field at the target.
+"""
+V_f = fft(S1.V())
+freqV = np.linspace(0, 1/((S1.time_limit - S1.distance/c)/500), 500)
+plt.plot(freqV, np.abs(V_f))
 plt.xlim(0, 1e9)
+plt.title('Fourier transform of the frequency modulated V field.')
+plt.xlabel('Frequency/Hz')
+plt.ylabel('Amplitude')
+#%%
+"""
+Superluminal speed of the polarization current v wrt y on the antenna.
+"""
+def P_y(y):
+    """
+    Parameters
+    ----------
+    y : array
+        Polarization current y position.
+
+    Returns
+    -------
+    array
+        Time for the polarization current to move to y.
+    """
+    return -np.sqrt(X_0**2 + (Y_0 + y)**2)/c
+
+v_y = -P_y(y_a)*c/(Y_0 + y_a) #Speed of the current / c.
+plt.plot(y_a, np.log(v_y)) #ln of the ratio verses y plot, the speed is always superluminal.
+plt.title('ln(v/c) verses y plot, v is the speed of the current.')
+plt.xlabel('y/m')
+plt.ylabel('ln(v/c)')
+plt.grid()
 #%%
